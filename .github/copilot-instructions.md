@@ -1,0 +1,5 @@
+- [ ] 项目已基于 React + TypeScript + Vite 创建。
+- [ ] 本地 dev 代理已配置为 `http://localhost:8000`。
+- [ ] 项目包含登录/注册/忘记密码页面和通讯录页面。
+- [ ] 通讯录支持查看、搜索、新增、编辑、删除。
+- [ ] 已生成 README，可通过 `npm install` 和 `npm run dev` 启动项目。
