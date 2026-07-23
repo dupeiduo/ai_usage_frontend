@@ -2,6 +2,7 @@ import { BrowserRouter, NavLink, Navigate, Route, Routes } from 'react-router-do
 import { useEffect, useState } from 'react'
 import AuthPage from './pages/AuthPage'
 import ContactsPage from './pages/ContactsPage'
+import ChatPage from './pages/ChatPage'
 import './App.css'
 
 function App() {
@@ -30,7 +31,7 @@ function App() {
     <BrowserRouter>
       <div className="app-shell">
         <header className="app-header">
-          <div className="brand">AI 应用系统</div>
+          <div className="brand">DPD-AI 应用系统</div>
           <nav className="app-nav">
             {!loggedIn ? (
               <NavLink to="/auth" className={({ isActive }) => (isActive ? 'active' : '')}>
@@ -38,6 +39,12 @@ function App() {
               </NavLink>
             ) : (
               <>
+                <NavLink to="/contacts" className={({ isActive }) => (isActive ? 'active' : '')}>
+                  通讯录
+                </NavLink>
+                <NavLink to="/chat" className={({ isActive }) => (isActive ? 'active' : '')}>
+                  AI 聊天
+                </NavLink>
                 <button
                   type="button"
                   className="logout-button"
@@ -59,6 +66,10 @@ function App() {
             <Route
               path="/contacts"
               element={loggedIn ? <ContactsPage /> : <Navigate replace to="/auth" />}
+            />
+            <Route
+              path="/chat"
+              element={loggedIn ? <ChatPage /> : <Navigate replace to="/auth" />}
             />
             <Route path="/" element={<Navigate replace to="/auth" />} />
             <Route path="*" element={<Navigate replace to="/auth" />} />
