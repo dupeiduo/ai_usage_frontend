@@ -28,7 +28,7 @@
 
 .app-nav a {
   padding: 10px 16px;
-  border-radius: 999px;
+  border-radius: 6px;
   background: #e2e8f0;
   color: #1f2937;
   text-decoration: none;
@@ -83,7 +83,7 @@
 .secondary-button,
 .panel button {
   border: none;
-  border-radius: 999px;
+  border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s ease;
 }

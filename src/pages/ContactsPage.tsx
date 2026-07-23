@@ -252,18 +252,11 @@ const ContactsPage = () => {
 
     return (
         <section className="page-card contacts-page">
-            <div className="page-header">
-                <h1 className="page-title">通讯录管理</h1>
-                <p className="page-description">
-                    支持查看列表、搜索、新增、编辑、删除。数据保存在本地浏览器中。
-                </p>
-            </div>
-
             <div className="contacts-grid">
                 <div className="panel">
                     <div className="panel-header">
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                            <h2>联系人列表</h2>
+                            <h2>通讯录管理</h2>
                             <button type="button" className="primary-button" onClick={openCreateModal}>
                                 新增联系人
                             </button>

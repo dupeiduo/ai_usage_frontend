@@ -30,7 +30,7 @@ function App() {
     <BrowserRouter>
       <div className="app-shell">
         <header className="app-header">
-          <div className="brand">通讯录管理系统</div>
+          <div className="brand">AI 应用系统</div>
           <nav className="app-nav">
             {!loggedIn ? (
               <NavLink to="/auth" className={({ isActive }) => (isActive ? 'active' : '')}>
@@ -38,9 +38,6 @@ function App() {
               </NavLink>
             ) : (
               <>
-                <NavLink to="/contacts" className={({ isActive }) => (isActive ? 'active' : '')}>
-                  通讯录
-                </NavLink>
                 <button
                   type="button"
                   className="logout-button"
