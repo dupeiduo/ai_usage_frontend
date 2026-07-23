@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { FormEvent } from 'react'
 
@@ -28,6 +28,27 @@ const AuthPage = ({ onAuthSuccess }: AuthPageProps) => {
     const [form, setForm] = useState<FormState>(initialState)
     const [message, setMessage] = useState<string>('')
     const [loading, setLoading] = useState(false)
+    const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+    const showMessage = (msg: string) => {
+        setMessage(msg)
+        if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+        toastTimerRef.current = setTimeout(() => setMessage(''), 4000)
+    }
+
+    const clearMessage = () => {
+        setMessage('')
+        if (toastTimerRef.current) {
+            clearTimeout(toastTimerRef.current)
+            toastTimerRef.current = null
+        }
+    }
+
+    useEffect(() => {
+        return () => {
+            if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+        }
+    }, [])
 
     // Backend endpoints used for authentication and password reset.
     const endpoint = {
@@ -38,15 +59,15 @@ const AuthPage = ({ onAuthSuccess }: AuthPageProps) => {
 
     const handleChange = (field: keyof FormState, value: string) => {
         setForm((prev) => ({ ...prev, [field]: value }))
-        setMessage('')
+        clearMessage()
     }
 
     const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault()
-        setMessage('')
+        clearMessage()
 
         if (mode === 'register' && form.password !== form.confirmPassword) {
-            setMessage('两次密码不一致，请重新输入。')
+            showMessage('两次密码不一致，请重新输入。')
             return
         }
 
@@ -82,7 +103,7 @@ const AuthPage = ({ onAuthSuccess }: AuthPageProps) => {
                     throw new Error('登录时未收到有效的 token')
                 }
                 onAuthSuccess(token)
-                setMessage('登录成功，正在跳转到通讯录。')
+                showMessage('登录成功，正在跳转到通讯录。')
                 navigate('/contacts')
                 return
             }
@@ -93,18 +114,18 @@ const AuthPage = ({ onAuthSuccess }: AuthPageProps) => {
                     throw new Error('注册时未收到有效的 token')
                 }
                 onAuthSuccess(token)
-                setMessage('注册成功，正在跳转到通讯录。')
+                showMessage('注册成功，正在跳转到通讯录。')
                 setForm(initialState)
                 navigate('/contacts')
                 return
             }
 
-            setMessage(result.message || '操作成功。')
+            showMessage(result.message || '操作成功。')
         } catch (error) {
             if (error instanceof Error) {
-                setMessage(error.message)
+                showMessage(error.message)
             } else {
-                setMessage('发生未知错误，请稍后再试。')
+                showMessage('发生未知错误，请稍后再试。')
             }
         } finally {
             setLoading(false)
@@ -121,7 +142,7 @@ const AuthPage = ({ onAuthSuccess }: AuthPageProps) => {
                         className={mode === 'login' ? 'active' : ''}
                         onClick={() => {
                             setMode('login')
-                            setMessage('')
+                            clearMessage()
                         }}
                     >
                         登录
@@ -131,7 +152,7 @@ const AuthPage = ({ onAuthSuccess }: AuthPageProps) => {
                         className={mode === 'register' ? 'active' : ''}
                         onClick={() => {
                             setMode('register')
-                            setMessage('')
+                            clearMessage()
                         }}
                     >
                         注册
@@ -141,7 +162,7 @@ const AuthPage = ({ onAuthSuccess }: AuthPageProps) => {
                         className={mode === 'forget' ? 'active' : ''}
                         onClick={() => {
                             setMode('forget')
-                            setMessage('')
+                            clearMessage()
                         }}
                     >
                         忘记密码
@@ -211,7 +232,12 @@ const AuthPage = ({ onAuthSuccess }: AuthPageProps) => {
                 </button>
             </form>
 
-            {message && <div className="message-box">{message}</div>}
+            {message && (
+                <div className="message-box">
+                    <span>{message}</span>
+                    <button type="button" className="toast-close" onClick={clearMessage}>×</button>
+                </div>
+            )}
         </section>
     )
 }

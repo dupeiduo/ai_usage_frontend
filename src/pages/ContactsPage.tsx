@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 
 type Contact = {
@@ -22,6 +22,25 @@ const initialContactForm: ContactForm = {
 
 const localStorageKey = 'address-book-contacts'
 
+const defaultContacts: Contact[] = [
+    {
+        id: 1,
+        name: '张三',
+        phone: '13800000000',
+        email: 'zhangsan@example.com',
+        address: '北京市朝阳区',
+        social_account: '@zhangsan',
+    },
+    {
+        id: 2,
+        name: '李四',
+        phone: '13900000001',
+        email: 'lisi@example.com',
+        address: '上海市浦东新区',
+        social_account: '@lisi',
+    },
+]
+
 const ContactsPage = () => {
     const [contacts, setContacts] = useState<Contact[]>([])
     const [search, setSearch] = useState('')
@@ -32,11 +51,26 @@ const ContactsPage = () => {
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState('')
     const [page, setPage] = useState(1)
-    // pageSize is fixed for this UI, no setter is needed.
     const pageSize = 10
     const [total, setTotal] = useState<number | null>(null)
     const [refreshKey, setRefreshKey] = useState(0)
     const [message, setMessage] = useState('')
+    const [deleteTarget, setDeleteTarget] = useState<Contact | null>(null)
+    const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+    const showMessage = (msg: string) => {
+        setMessage(msg)
+        if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+        toastTimerRef.current = setTimeout(() => setMessage(''), 3000)
+    }
+
+    const clearMessage = () => {
+        setMessage('')
+        if (toastTimerRef.current) {
+            clearTimeout(toastTimerRef.current)
+            toastTimerRef.current = null
+        }
+    }
 
     useEffect(() => {
         let mounted = true
@@ -53,18 +87,16 @@ const ContactsPage = () => {
                 }
 
                 const data = await res.json()
-                // 适配返回格式：{ page, page_size, total, items }
                 const list: Contact[] = data?.items ?? []
                 const resTotal: number | undefined = data?.total
 
-                if (mounted && list && list.length > 0) {
+                if (mounted && list.length > 0) {
                     setContacts(list)
                     window.localStorage.setItem(localStorageKey, JSON.stringify(list))
                     if (typeof resTotal === 'number') setTotal(resTotal)
                     return
                 }
 
-                // 如果接口返回为空，则回退到 localStorage 或示例数据
                 const stored = window.localStorage.getItem(localStorageKey)
                 if (mounted && stored) {
                     setContacts(JSON.parse(stored))
@@ -72,24 +104,7 @@ const ContactsPage = () => {
                 }
 
                 if (mounted) {
-                    setContacts([
-                        {
-                            id: 1,
-                            name: '张三',
-                            phone: '13800000000',
-                            email: 'zhangsan@example.com',
-                            address: '北京市朝阳区',
-                            social_account: '@zhangsan',
-                        },
-                        {
-                            id: 2,
-                            name: '李四',
-                            phone: '13900000001',
-                            email: 'lisi@example.com',
-                            address: '上海市浦东新区',
-                            social_account: '@lisi',
-                        },
-                    ])
+                    setContacts(defaultContacts)
                 }
             } catch (err) {
                 if (mounted) {
@@ -97,26 +112,8 @@ const ContactsPage = () => {
                     if (stored) {
                         setContacts(JSON.parse(stored))
                     } else {
-                        setContacts([
-                            {
-                                id: 1,
-                                name: '张三',
-                                phone: '13800000000',
-                                email: 'zhangsan@example.com',
-                                address: '北京市朝阳区',
-                                social_account: '@zhangsan',
-                            },
-                            {
-                                id: 2,
-                                name: '李四',
-                                phone: '13900000001',
-                                email: 'lisi@example.com',
-                                address: '上海市浦东新区',
-                                social_account: '@lisi',
-                            },
-                        ])
+                        setContacts(defaultContacts)
                     }
-
                     setError(err instanceof Error ? err.message : String(err))
                 }
             } finally {
@@ -153,7 +150,7 @@ const ContactsPage = () => {
     const resetForm = () => {
         setForm(initialContactForm)
         setEditId(null)
-        setMessage('')
+        clearMessage()
     }
 
     const handleFormChange = (field: keyof ContactForm, value: string) => {
@@ -162,11 +159,11 @@ const ContactsPage = () => {
 
     const handleSave = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault()
-        setMessage('')
+        clearMessage()
         setError('')
 
         if (!form.name.trim() || !form.phone.trim()) {
-            setMessage('姓名和电话为必填项。')
+            showMessage('姓名和电话为必填项。')
             return
         }
 
@@ -192,7 +189,7 @@ const ContactsPage = () => {
             }
 
             const result = await res.json().catch(() => null)
-            setMessage(modalMode === 'create' ? '联系人已新增。' : '联系人已更新。')
+            showMessage(modalMode === 'create' ? '联系人已新增。' : '联系人已更新。')
             setIsModalOpen(false)
             resetForm()
             setRefreshKey((prev) => prev + 1)
@@ -201,7 +198,7 @@ const ContactsPage = () => {
                 setPage(1)
             }
         } catch (err) {
-            setMessage(err instanceof Error ? err.message : '保存失败，请稍后重试。')
+            showMessage(err instanceof Error ? err.message : '保存失败，请稍后重试。')
         } finally {
             setLoading(false)
         }
@@ -224,14 +221,20 @@ const ContactsPage = () => {
         setEditId(contact.id)
         setModalMode('edit')
         setIsModalOpen(true)
-        setMessage('')
+        clearMessage()
     }
 
-    const handleDelete = async (id: number) => {
-        setMessage('')
+    const confirmDelete = (contact: Contact) => {
+        setDeleteTarget(contact)
+    }
+
+    const handleDelete = async () => {
+        if (!deleteTarget) return
+
+        clearMessage()
         setError('')
         try {
-            const res = await fetch(`/api/contact/delete?contact_id=${id}`, {
+            const res = await fetch(`/api/contact/delete?contact_id=${deleteTarget.id}`, {
                 method: 'GET',
             })
             if (!res.ok) {
@@ -240,13 +243,15 @@ const ContactsPage = () => {
                 throw new Error(errorText)
             }
 
-            if (editId === id) {
+            if (editId === deleteTarget.id) {
                 resetForm()
             }
-            setMessage('联系人已删除。')
+            showMessage('联系人已删除。')
+            setDeleteTarget(null)
             setRefreshKey((prev) => prev + 1)
         } catch (err) {
-            setMessage(err instanceof Error ? err.message : '删除失败，请稍后重试。')
+            showMessage(err instanceof Error ? err.message : '删除失败，请稍后重试。')
+            setDeleteTarget(null)
         }
     }
 
@@ -255,7 +260,7 @@ const ContactsPage = () => {
             <div className="contacts-grid">
                 <div className="panel">
                     <div className="panel-header">
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                        <div className="panel-row">
                             <h2>通讯录管理</h2>
                             <button type="button" className="primary-button" onClick={openCreateModal}>
                                 新增联系人
@@ -295,14 +300,14 @@ const ContactsPage = () => {
                                             <td>{contact.id}</td>
                                             <td>{contact.name}</td>
                                             <td>{contact.phone}</td>
-                                            <td>{contact.email || '-'} </td>
-                                            <td>{contact.address || '-'} </td>
-                                            <td>{contact.social_account || '-'} </td>
+                                            <td>{contact.email || '-'}</td>
+                                            <td>{contact.address || '-'}</td>
+                                            <td>{contact.social_account || '-'}</td>
                                             <td>
                                                 <button type="button" onClick={() => openEditModal(contact)}>
                                                     编辑
                                                 </button>
-                                                <button type="button" className="danger" onClick={() => handleDelete(contact.id)}>
+                                                <button type="button" className="danger" onClick={() => confirmDelete(contact)}>
                                                     删除
                                                 </button>
                                             </td>
@@ -312,11 +317,12 @@ const ContactsPage = () => {
                             </tbody>
                         </table>
                     </div>
-                    <div className="pagination-controls" style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
+
+                    <div className="pagination-controls">
                         <button type="button" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={loading || page <= 1}>
                             上一页
                         </button>
-                        <div>第 {page} 页</div>
+                        <span className="page-info">第 {page} 页</span>
                         <button
                             type="button"
                             onClick={() => setPage((p) => p + 1)}
@@ -324,14 +330,19 @@ const ContactsPage = () => {
                         >
                             下一页
                         </button>
-                        <div style={{ marginLeft: 12 }}>
-                            每页 {pageSize} 条
-                        </div>
-                        {total !== null && <div style={{ marginLeft: 12 }}>共 {total} 条</div>}
-                        {error && <div style={{ color: 'crimson', marginLeft: 12 }}>{error}</div>}
+                        <span className="page-info">每页 {pageSize} 条</span>
+                        {total !== null && <span className="page-info">共 {total} 条</span>}
+                        {error && <span className="error-text">{error}</span>}
                     </div>
                 </div>
             </div>
+
+            {message && (
+                <div className="message-box">
+                    <span>{message}</span>
+                    <button type="button" className="toast-close" onClick={clearMessage}>×</button>
+                </div>
+            )}
 
             {isModalOpen && (
                 <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
@@ -399,7 +410,25 @@ const ContactsPage = () => {
                                 </button>
                             </div>
                         </form>
-                        {message && <div className="message-box">{message}</div>}
+                    </div>
+                </div>
+            )}
+
+            {deleteTarget && (
+                <div className="confirm-overlay" onClick={() => setDeleteTarget(null)}>
+                    <div className="confirm-dialog" onClick={(e) => e.stopPropagation()}>
+                        <h3>确认删除</h3>
+                        <p>
+                            确定要删除联系人 <strong>{deleteTarget.name}</strong>（{deleteTarget.phone}）吗？此操作不可撤销。
+                        </p>
+                        <div className="confirm-actions">
+                            <button type="button" className="secondary-button" onClick={() => setDeleteTarget(null)}>
+                                取消
+                            </button>
+                            <button type="button" className="primary-button" style={{ background: '#ef4444', boxShadow: '0 4px 12px rgba(239,68,68,0.2)' }} onClick={handleDelete}>
+                                确认删除
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
