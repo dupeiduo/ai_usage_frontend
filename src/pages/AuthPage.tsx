@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { FormEvent } from 'react'
+import { apiPost } from '../api'
 
 type AuthMode = 'login' | 'register' | 'forget'
 
@@ -85,11 +86,7 @@ const AuthPage = ({ onAuthSuccess }: AuthPageProps) => {
 
         setLoading(true)
         try {
-            const response = await fetch(endpoint[mode], {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
-            })
+            const response = await apiPost(endpoint[mode], payload)
             const result = await response.json()
 
             if (!response.ok) {

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
+import { apiGet, apiPost } from '../api'
 
 type Contact = {
     id: number
@@ -19,27 +20,6 @@ const initialContactForm: ContactForm = {
     address: '',
     social_account: '',
 }
-
-const localStorageKey = 'address-book-contacts'
-
-const defaultContacts: Contact[] = [
-    {
-        id: 1,
-        name: '张三',
-        phone: '13800000000',
-        email: 'zhangsan@example.com',
-        address: '北京市朝阳区',
-        social_account: '@zhangsan',
-    },
-    {
-        id: 2,
-        name: '李四',
-        phone: '13900000001',
-        email: 'lisi@example.com',
-        address: '上海市浦东新区',
-        social_account: '@lisi',
-    },
-]
 
 const ContactsPage = () => {
     const [contacts, setContacts] = useState<Contact[]>([])
@@ -81,39 +61,19 @@ const ContactsPage = () => {
 
             try {
                 const url = `/api/contact/list?page=${page}&page_size=${pageSize}`
-                const res = await fetch(url, { method: 'GET' })
+                const res = await apiGet(url)
                 if (!res.ok) {
                     throw new Error(`请求失败: ${res.status}`)
                 }
 
                 const data = await res.json()
-                const list: Contact[] = data?.items ?? []
-                const resTotal: number | undefined = data?.total
-
-                if (mounted && list.length > 0) {
-                    setContacts(list)
-                    window.localStorage.setItem(localStorageKey, JSON.stringify(list))
-                    if (typeof resTotal === 'number') setTotal(resTotal)
-                    return
-                }
-
-                const stored = window.localStorage.getItem(localStorageKey)
-                if (mounted && stored) {
-                    setContacts(JSON.parse(stored))
-                    return
-                }
-
                 if (mounted) {
-                    setContacts(defaultContacts)
+                    setContacts(data?.items ?? [])
+                    if (typeof data?.total === 'number') setTotal(data.total)
                 }
             } catch (err) {
                 if (mounted) {
-                    const stored = window.localStorage.getItem(localStorageKey)
-                    if (stored) {
-                        setContacts(JSON.parse(stored))
-                    } else {
-                        setContacts(defaultContacts)
-                    }
+                    setContacts([])
                     setError(err instanceof Error ? err.message : String(err))
                 }
             } finally {
@@ -127,10 +87,6 @@ const ContactsPage = () => {
             mounted = false
         }
     }, [page, pageSize, refreshKey])
-
-    useEffect(() => {
-        window.localStorage.setItem(localStorageKey, JSON.stringify(contacts))
-    }, [contacts])
 
     const filteredContacts = useMemo(() => {
         const query = search.trim().toLowerCase()
@@ -174,13 +130,7 @@ const ContactsPage = () => {
 
         try {
             setLoading(true)
-            const res = await fetch(endpoint, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(form),
-            })
+            const res = await apiPost(endpoint, form)
 
             if (!res.ok) {
                 const data = await res.json().catch(() => null)
@@ -234,9 +184,7 @@ const ContactsPage = () => {
         clearMessage()
         setError('')
         try {
-            const res = await fetch(`/api/contact/delete?contact_id=${deleteTarget.id}`, {
-                method: 'GET',
-            })
+            const res = await apiGet(`/api/contact/delete?contact_id=${deleteTarget.id}`)
             if (!res.ok) {
                 const data = await res.json().catch(() => null)
                 const errorText = data?.message || `删除失败：${res.status}`
