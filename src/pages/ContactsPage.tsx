@@ -32,7 +32,8 @@ const ContactsPage = () => {
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState('')
     const [page, setPage] = useState(1)
-    const [pageSize, _setPageSize] = useState(10)
+    // pageSize is fixed for this UI, no setter is needed.
+    const pageSize = 10
     const [total, setTotal] = useState<number | null>(null)
     const [refreshKey, setRefreshKey] = useState(0)
     const [message, setMessage] = useState('')

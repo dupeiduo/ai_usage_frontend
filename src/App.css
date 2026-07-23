@@ -99,6 +99,7 @@
 .primary-button {
   background: #2563eb;
   color: #ffffff;
+  height: 48px;
 }
 
 .mode-switch button:hover,

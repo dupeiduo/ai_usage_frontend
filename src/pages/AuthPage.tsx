@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import type { FormEvent } from 'react'
 
 type AuthMode = 'login' | 'register' | 'forget'
@@ -10,6 +11,10 @@ type FormState = {
     confirmPassword: string
 }
 
+type AuthPageProps = {
+    onAuthSuccess: (token: string) => void
+}
+
 const initialState: FormState = {
     name: '',
     email: '',
@@ -17,12 +22,14 @@ const initialState: FormState = {
     confirmPassword: '',
 }
 
-const AuthPage = () => {
+const AuthPage = ({ onAuthSuccess }: AuthPageProps) => {
+    const navigate = useNavigate()
     const [mode, setMode] = useState<AuthMode>('login')
     const [form, setForm] = useState<FormState>(initialState)
     const [message, setMessage] = useState<string>('')
     const [loading, setLoading] = useState(false)
 
+    // Backend endpoints used for authentication and password reset.
     const endpoint = {
         login: '/api/user/login',
         register: '/api/user/register',
@@ -47,7 +54,12 @@ const AuthPage = () => {
             mode === 'login'
                 ? { email: form.email, password: form.password }
                 : mode === 'register'
-                    ? { name: form.name, email: form.email, password: form.password }
+                    ? {
+                        name: form.name,
+                        email: form.email,
+                        password: form.password,
+                        password_confirm: form.confirmPassword,
+                    }
                     : { email: form.email }
 
         setLoading(true)
@@ -60,16 +72,34 @@ const AuthPage = () => {
             const result = await response.json()
 
             if (!response.ok) {
+                // Display backend error message when available.
                 throw new Error(result.message || '请求失败，请重试。')
             }
 
-            setMessage(result.message || '操作成功。')
             if (mode === 'login') {
-                setMessage('登录成功，请前往通讯录页面查看数据。')
+                const token = result.access_token
+                if (!token) {
+                    throw new Error('登录时未收到有效的 token')
+                }
+                onAuthSuccess(token)
+                setMessage('登录成功，正在跳转到通讯录。')
+                navigate('/contacts')
+                return
             }
+
             if (mode === 'register') {
+                const token = result.access_token
+                if (!token) {
+                    throw new Error('注册时未收到有效的 token')
+                }
+                onAuthSuccess(token)
+                setMessage('注册成功，正在跳转到通讯录。')
                 setForm(initialState)
+                navigate('/contacts')
+                return
             }
+
+            setMessage(result.message || '操作成功。')
         } catch (error) {
             if (error instanceof Error) {
                 setMessage(error.message)
@@ -180,15 +210,6 @@ const AuthPage = () => {
                                 : '发送重置邮件'}
                 </button>
             </form>
-
-            <div className="auth-help">
-                <p>使用下面接口测试:</p>
-                <ul>
-                    <li>/api/user/login</li>
-                    <li>/api/user/register</li>
-                    <li>/api/user/forget</li>
-                </ul>
-            </div>
 
             {message && <div className="message-box">{message}</div>}
         </section>

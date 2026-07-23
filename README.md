@@ -5,13 +5,13 @@
 ## 项目结构
 
 - `src/`
-  - `App.tsx`：项目入口组件，负责路由导航和页面切换。
+  - `App.tsx`：项目入口组件，负责路由导航、登录状态管理和访问保护。
   - `main.tsx`：React 入口文件，挂载应用到 `#root`。
   - `index.css`：全局样式和基础样式重置。
-  - `App.css`：应用页面样式，包括导航、表单和通讯录布局。
+  - `App.css`：应用页面样式，包括导航、表单、通讯录布局和弹窗样式。
   - `pages/`
-    - `AuthPage.tsx`：登录、注册、忘记密码页面，实现对 `/api/user/login`、`/api/user/register` 和 `/api/user/forget` 的请求。
-    - `ContactsPage.tsx`：通讯录页面，支持联系人列表展示、搜索、新增、编辑、删除。
+    - `AuthPage.tsx`：登录、注册、忘记密码页面，注册时发送 `name`、`email`、`password` 和 `password_confirm`。
+    - `ContactsPage.tsx`：通讯录页面，支持联系人列表展示、搜索、新增、编辑、删除，并使用分页接口。
 
 - `vite.config.ts`：Vite 配置文件，设置开发服务器代理，将 `/api` 请求转发到 `http://localhost:8000`。
 - `.env.development`：开发环境变量文件，可用于扩展 API 基础地址或其他开发配置。
@@ -23,6 +23,8 @@
 - 通讯录页面：查看列表、搜索、新增、编辑、删除
 - 本地开发时 `/api` 请求代理到 `http://localhost:8000`
 - 通讯录数据保存在浏览器本地 `localStorage`
+- `/contacts` 页面受登录保护，未登录访问会自动跳回 `/auth`
+- 登录或注册成功后会自动跳转到 `/contacts`
 
 ## 主要页面路由
 
@@ -61,7 +63,8 @@ npm run dev
 
 - `src/pages/AuthPage.tsx`
   - 提供三种模式：登录、注册、忘记密码。
-  - 使用 `fetch` 向后端接口发送请求。
+  - 注册时发送 `name`、`email`、`password` 和 `password_confirm`。
+  - 使用 `fetch` 向后端接口 `/api/user/login`、`/api/user/register`、`/api/user/forget` 发送请求。
 
 - `src/pages/ContactsPage.tsx`
   - 使用本地 `localStorage` 保存联系人数据。
