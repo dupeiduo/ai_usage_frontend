@@ -1,6 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent, KeyboardEvent } from 'react'
-import { apiPost } from '../api'
 
 type Role = 'user' | 'assistant'
 
@@ -87,16 +86,53 @@ const ChatPage = () => {
         }
     }
 
-    // Call the real AI chat API
-    const callAiApi = async (userMessage: string): Promise<string> => {
-        const res = await apiPost('/api/chat/send', { message: userMessage })
-        if (!res.ok) {
-            const err = await res.json().catch(() => ({ detail: '请求失败' }))
-            throw new Error(err.detail || `API error: ${res.status}`)
-        }
-        const data = await res.json()
-        return data.content
-    }
+    // Simple markdown-to-HTML renderer (supports images, bold, code, links)
+    const renderMarkdown = useCallback((text: string): string => {
+        // Escape HTML first
+        let html = text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+
+        // Code blocks ```...```
+        html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, (_m, lang, code) => {
+            return `<pre><code class="language-${lang}">${code.trim()}</code></pre>`
+        })
+
+        // Inline code `...`
+        html = html.replace(/`([^`]+)`/g, '<code>$1</code>')
+
+        // Images ![alt](url)
+        html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g,
+            '<img src="$2" alt="$1" class="chat-img" loading="lazy" />')
+
+        // Links [text](url)
+        html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g,
+            '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
+
+        // Bold **text**
+        html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+
+        // Headers
+        html = html.replace(/^### (.+)$/gm, '<h4>$1</h4>')
+        html = html.replace(/^## (.+)$/gm, '<h3>$1</h3>')
+        html = html.replace(/^# (.+)$/gm, '<h2>$1</h2>')
+
+        // Unordered lists
+        html = html.replace(/^- (.+)$/gm, '<li>$1</li>')
+
+        // Paragraphs (double newline)
+        html = html.replace(/\n\n/g, '</p><p>')
+        html = '<p>' + html + '</p>'
+
+        // Single newlines within paragraphs
+        html = html.replace(/\n/g, '<br/>')
+
+        return html
+    }, [])
+
+    // Get auth token for streaming fetch
+    const getToken = () => localStorage.getItem('authToken')
 
     const handleSend = async () => {
         const text = input.trim()
@@ -112,11 +148,15 @@ const ChatPage = () => {
             timestamp: Date.now(),
         }
 
+        // Build conversation history (last 20 messages) for context
+        const historyMessages = activeConv
+            ? activeConv.messages.slice(-20).map(m => ({ role: m.role, content: m.content }))
+            : []
+
         // Update conversation with user message
         setConversations((prev) =>
             prev.map((conv) => {
                 if (conv.id !== activeConvId) return conv
-                // Auto-title from first message
                 const title =
                     conv.messages.length === 0
                         ? text.slice(0, 30) + (text.length > 30 ? '...' : '')
@@ -129,25 +169,134 @@ const ChatPage = () => {
             }),
         )
 
-        try {
-            const replyText = await callAiApi(text)
+        // Prepare for streaming
+        let streamedContent = ''
+        let assistantId = ''
 
-            const assistantMsg: Message = {
-                id: createId(),
-                role: 'assistant',
-                content: replyText,
-                timestamp: Date.now(),
+        try {
+            const token = getToken()
+            const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+            if (token) headers['Authorization'] = `Bearer ${token}`
+
+            const res = await fetch('/api/chat/send-stream', {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({
+                    messages: historyMessages,
+                    message: text,
+                }),
+            })
+
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({ detail: '请求失败' }))
+                throw new Error(err.detail || `API error: ${res.status}`)
             }
 
-            setConversations((prev) =>
-                prev.map((conv) => {
-                    if (conv.id !== activeConvId) return conv
-                    return {
-                        ...conv,
-                        messages: [...conv.messages, assistantMsg],
+            const reader = res.body?.getReader()
+            if (!reader) throw new Error('No response body')
+
+            const decoder = new TextDecoder()
+            let buffer = ''
+
+            while (true) {
+                const { done, value } = await reader.read()
+                if (done) break
+
+                buffer += decoder.decode(value, { stream: true })
+
+                // SSE events are separated by \n\n
+                const parts = buffer.split('\n\n')
+                buffer = parts.pop() || ''
+
+                for (const part of parts) {
+                    const lines = part.split('\n')
+                    let eventType = ''
+                    let eventData = ''
+
+                    for (const line of lines) {
+                        if (line.startsWith('event: ')) eventType = line.slice(7).trim()
+                        else if (line.startsWith('data: ')) eventData = line.slice(6)
                     }
-                }),
-            )
+
+                    if (eventType === 'meta' && eventData) {
+                        try {
+                            const meta = JSON.parse(eventData)
+                            assistantId = meta.id
+                            setConversations((prev) =>
+                                prev.map((conv) => {
+                                    if (conv.id !== activeConvId) return conv
+                                    return {
+                                        ...conv,
+                                        messages: [...conv.messages, {
+                                            id: meta.id,
+                                            role: 'assistant',
+                                            content: '',
+                                            timestamp: meta.timestamp,
+                                        }],
+                                    }
+                                }),
+                            )
+                        } catch { /* ignore */ }
+                    } else if (eventType === 'error' && eventData) {
+                        try {
+                            const err = JSON.parse(eventData)
+                            throw new Error(err.detail || 'Stream error')
+                        } catch (e) {
+                            if (e instanceof Error && e.message !== 'Stream error') throw e
+                            throw new Error('Stream error')
+                        }
+                    } else if (eventData) {
+                        try {
+                            const payload = JSON.parse(eventData)
+                            if (payload.content) {
+                                streamedContent += payload.content
+                                setConversations((prev) =>
+                                    prev.map((conv) => {
+                                        if (conv.id !== activeConvId) return conv
+                                        return {
+                                            ...conv,
+                                            messages: conv.messages.map((m) =>
+                                                m.id === assistantId
+                                                    ? { ...m, content: streamedContent }
+                                                    : m
+                                            ),
+                                        }
+                                    }),
+                                )
+                            }
+                        } catch { /* ignore non-JSON data (e.g. [DONE]) */ }
+                    }
+                }
+            }
+        } catch (err: unknown) {
+            const errorMsg = err instanceof Error ? err.message : '未知错误'
+            // Append error as assistant message if nothing streamed
+            if (!streamedContent) {
+                const fallbackId = assistantId || createId()
+                setConversations((prev) =>
+                    prev.map((conv) => {
+                        if (conv.id !== activeConvId) return conv
+                        const hasPlaceholder = conv.messages.some(m => m.id === fallbackId)
+                        if (hasPlaceholder) {
+                            return {
+                                ...conv,
+                                messages: conv.messages.map((m) =>
+                                    m.id === fallbackId ? { ...m, content: `❌ 错误：${errorMsg}` } : m
+                                ),
+                            }
+                        }
+                        return {
+                            ...conv,
+                            messages: [...conv.messages, {
+                                id: fallbackId,
+                                role: 'assistant',
+                                content: `❌ 错误：${errorMsg}`,
+                                timestamp: Date.now(),
+                            }],
+                        }
+                    }),
+                )
+            }
         } finally {
             setSending(false)
         }
@@ -272,7 +421,10 @@ const ChatPage = () => {
                                             )}
                                         </div>
                                         <div className="chat-bubble">
-                                            <div className="chat-bubble-text">{msg.content}</div>
+                                            <div
+                                                className="chat-bubble-text"
+                                                dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
+                                            />
                                             <div className="chat-bubble-time">{formatTime(msg.timestamp)}</div>
                                         </div>
                                     </div>

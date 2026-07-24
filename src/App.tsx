@@ -3,17 +3,12 @@ import { useEffect, useState } from 'react'
 import AuthPage from './pages/AuthPage'
 import ContactsPage from './pages/ContactsPage'
 import ChatPage from './pages/ChatPage'
+import { handleUnauthorized } from './api'
 import './App.css'
 
 function App() {
   // Track authentication token from localStorage.
-  const [loggedIn, setLoggedIn] = useState(false)
-
-  useEffect(() => {
-    // On app load, check if a valid auth token exists.
-    const token = localStorage.getItem('authToken')
-    setLoggedIn(!!token)
-  }, [])
+  const [loggedIn, setLoggedIn] = useState(() => !!localStorage.getItem('authToken'))
 
   const handleAuthSuccess = (token: string) => {
     // Persist JWT token and update UI.
@@ -26,6 +21,9 @@ function App() {
     localStorage.removeItem('authToken')
     setLoggedIn(false)
   }
+
+  // Global 401 interceptor — any API 401 triggers logout.
+  useEffect(() => handleUnauthorized(handleLogout), [])
 
   return (
     <BrowserRouter>
