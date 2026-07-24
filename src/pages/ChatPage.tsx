@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { FormEvent, KeyboardEvent } from 'react'
+import type { KeyboardEvent } from 'react'
 
 type Role = 'user' | 'assistant'
 
@@ -67,6 +67,48 @@ const ChatPage = () => {
 
     const messages = activeConv?.messages ?? []
 
+    // Inject copy buttons into code blocks after messages render
+    const messagesRef = useRef<HTMLDivElement>(null)
+
+    useEffect(() => {
+        const container = messagesRef.current
+        if (!container) return
+
+        const wrappers = container.querySelectorAll<HTMLElement>('.code-block-wrapper:not(.has-copy-btn)')
+        wrappers.forEach((wrapper) => {
+            wrapper.classList.add('has-copy-btn')
+            const btn = document.createElement('button')
+            btn.className = 'code-copy-btn'
+            btn.title = '复制代码'
+            btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>'
+            wrapper.appendChild(btn)
+        })
+    }, [messages])
+
+    const handleCopyCode = (target: HTMLElement) => {
+        const pre = target.closest('.code-block-wrapper')?.querySelector('pre')
+        if (!pre) return
+        const code = pre.textContent || ''
+        navigator.clipboard.writeText(code).then(() => {
+            target.classList.add('copied')
+            target.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
+            setTimeout(() => {
+                target.classList.remove('copied')
+                target.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>'
+            }, 2000)
+        }).catch(() => {
+            // Fallback for older browsers
+            const textarea = document.createElement('textarea')
+            textarea.value = code
+            textarea.style.position = 'fixed'
+            textarea.style.opacity = '0'
+            document.body.appendChild(textarea)
+            textarea.select()
+            document.execCommand('copy')
+            document.body.removeChild(textarea)
+        })
+    }
+
     const startNewChat = () => {
         const newConv: Conversation = {
             id: createId(),
@@ -94,9 +136,14 @@ const ChatPage = () => {
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
 
-        // Code blocks ```...```
+        // --- Extract code blocks first so their inner newlines survive ---
+        const codeBlocks: string[] = []
         html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, (_m, lang, code) => {
-            return `<pre><code class="language-${lang}">${code.trim()}</code></pre>`
+            const idx = codeBlocks.length
+            codeBlocks.push(
+                `<div class="code-block-wrapper"><pre class="has-copy-btn"><code class="language-${lang}">${code.trim()}</code></pre></div>`
+            )
+            return `\x00CODEBLOCK${idx}\x00`
         })
 
         // Inline code `...`
@@ -127,6 +174,9 @@ const ChatPage = () => {
 
         // Single newlines within paragraphs
         html = html.replace(/\n/g, '<br/>')
+
+        // --- Restore code blocks (preserving inner newlines) ---
+        html = html.replace(/\x00CODEBLOCK(\d+)\x00/g, (_m, idx) => codeBlocks[Number(idx)])
 
         return html
     }, [])
@@ -396,7 +446,16 @@ const ChatPage = () => {
                 ) : (
                     <>
                         {/* Messages */}
-                        <div className="chat-messages">
+                        <div
+                            className="chat-messages"
+                            ref={messagesRef}
+                            onClick={(e) => {
+                                const target = e.target as HTMLElement
+                                if (target.closest('.code-copy-btn')) {
+                                    handleCopyCode(target.closest('.code-copy-btn') as HTMLElement)
+                                }
+                            }}
+                        >
                             {messages.length === 0 ? (
                                 <div className="chat-empty-hint">
                                     <p>发送一条消息开始对话</p>
